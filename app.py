@@ -668,7 +668,11 @@ with tab4:
     suggested = auto_category(add_term) if add_term else cat_opts[0]
     suggested_idx = cat_opts.index(suggested) if suggested in cat_opts else 0
     if add_term:
-        st.caption(f"カテゴリ自動判定: {suggested}")
+        existing = next((c for c in all_cards if c["term"] == add_term), None)
+        if existing:
+            st.warning(f"「{add_term}」はすでに登録されています（カテゴリ：{mapped_category(existing)}）")
+        else:
+            st.caption(f"カテゴリ自動判定: {suggested}")
     add_category = st.selectbox("カテゴリ *", cat_opts, index=suggested_idx, key="add_category")
     add_meaning = st.text_area("意味・説明 *", placeholder="わかりやすく説明してみましょう", key="add_meaning")
     add_example = st.text_input("使用例（任意）", key="add_example")
