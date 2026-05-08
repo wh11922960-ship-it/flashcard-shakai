@@ -432,6 +432,22 @@ details = load_details()
 def mapped_category(card):
     return CATEGORY_MAP.get(card["category"], card["category"])
 
+def auto_category(term):
+    t = term
+    if any(k in t for k in ["税","相続","控除","申告","贈与","遺産","遺留","納税","課税","所得税","固定資産税","印紙税","不動産取得税","譲渡所得","租税"]):
+        return "税務"
+    if any(k in t for k in ["道路","接道","掘削","水道","下水","側溝","排水","放流","私道","公道","位置指定","2項","42条","43条","狭あい","セットバック","袋地","旗竿"]):
+        return "道路・接道"
+    if any(k in t for k in ["登記","地番","地目","公図","路線価","権利","甲区","乙区","抵当権","借地","地役権","換地","仮登記","公示価格","積算","鑑定","収益還元","取引事例","原価法","敷金","区分所有","共用","専有"]):
+        return "不動産・登記"
+    if any(k in t for k in ["建築","構造","基礎","耐火","斜線","用途","確認","竣工","着工","施工","防火","容積","建蔽","農地","開発","区域","地区","計画","法規","法第","法22","宅地","造成","擁壁","液状化","杭","改良","足場","配筋","外構","土間","河川","砂防","航空","文化財","生産緑地","景観","風致","港湾","国土","区画整理","減歩","換地","収用","農地法","宅地造成","急傾斜","単体規定","集団規定","不適格","通気","直張り","民法上"]):
+        return "建築・法規"
+    if any(k in t for k in ["利回り","節税","融資","収支","空室","サブリース","一括借上","キャッシュ","減価償却","シミュレーション","相続対策","媒介","パススルー","団体信用","ローン","金利","返済","インカム","キャピタル","出口","更地"]):
+        return "営業・提案"
+    if any(k in t for k in ["ROI","業者","宅建","オーナー","地主","業務停止","従業者","商業登記","法人"]):
+        return "業界・ビジネス"
+    return "建築・法規"
+
 total = len(all_cards)
 known_n = sum(1 for v in statuses.values() if v == "known")
 fuzzy_n = sum(1 for v in statuses.values() if v == "fuzzy")
@@ -646,25 +662,25 @@ with tab3:
 
 with tab4:
     st.subheader("新しい単語を追加")
-    with st.form("add_form"):
-        term = st.text_input("用語 *", placeholder="例：擁壁")
-        reading = st.text_input("読み方", placeholder="例：ようへき")
-        cat_opts = list(CATEGORY_COLORS.keys())
-        category = st.selectbox("カテゴリ *", cat_opts)
-        if category == "その他":
-            category = st.text_input("カテゴリ名を入力")
-        meaning = st.text_area("意味・説明 *", placeholder="わかりやすく説明してみましょう")
-        example = st.text_input("使用例（任意）")
-        submitted = st.form_submit_button("追加する", type="primary", use_container_width=True)
-        if submitted:
-            if not term or not meaning:
-                st.error("用語と意味は必須です")
-            else:
-                new_card = {"id": f"custom_{len(custom_cards)+1}", "category": category, "term": term, "reading": reading, "meaning": meaning, "example": example, "is_custom": True}
-                custom_cards.append(new_card)
-                save_custom(custom_cards)
-                st.success(f"「{term}」を追加しました！")
-                st.rerun()
+    add_term = st.text_input("用語 *", placeholder="例：擁壁", key="add_term")
+    add_reading = st.text_input("読み方", placeholder="例：ようへき", key="add_reading")
+    cat_opts = list(CATEGORY_COLORS.keys())
+    suggested = auto_category(add_term) if add_term else cat_opts[0]
+    suggested_idx = cat_opts.index(suggested) if suggested in cat_opts else 0
+    if add_term:
+        st.caption(f"カテゴリ自動判定: {suggested}")
+    add_category = st.selectbox("カテゴリ *", cat_opts, index=suggested_idx, key="add_category")
+    add_meaning = st.text_area("意味・説明 *", placeholder="わかりやすく説明してみましょう", key="add_meaning")
+    add_example = st.text_input("使用例（任意）", key="add_example")
+    if st.button("追加する", type="primary", use_container_width=True, key="add_submit"):
+        if not add_term or not add_meaning:
+            st.error("用語と意味は必須です")
+        else:
+            new_card = {"id": f"custom_{len(custom_cards)+1}", "category": add_category, "term": add_term, "reading": add_reading, "meaning": add_meaning, "example": add_example, "is_custom": True}
+            custom_cards.append(new_card)
+            save_custom(custom_cards)
+            st.success(f"「{add_term}」を追加しました！")
+            st.rerun()
 
     if custom_cards:
         st.divider()
