@@ -415,6 +415,10 @@ if "show_detail" not in st.session_state:
     st.session_state.show_detail = False
 if "status_filter" not in st.session_state:
     st.session_state.status_filter = None
+if "shuffled_ids" not in st.session_state:
+    st.session_state.shuffled_ids = []
+if "last_filter_key" not in st.session_state:
+    st.session_state.last_filter_key = ""
 
 statuses = load_statuses()
 custom_cards = load_custom()
@@ -453,6 +457,7 @@ def stat_box(col, label, value, key, status_key):
 tab1, tab2, tab3, tab4 = st.tabs(["学習", "検索", "一覧", "追加"])
 
 with tab1:
+    import random
     cats = ["すべて"] + list(CATEGORY_COLORS.keys())
     status_opts = ["すべて", "未判定", "わからない", "曖昧", "わかった"]
     cat = st.session_state.get("study_cat", "すべて")
@@ -469,6 +474,19 @@ with tab1:
         if status_f == "曖昧" and s != "fuzzy": continue
         if status_f == "わかった" and s != "known": continue
         deck.append(c)
+
+    # フィルターが変わったらシャッフルし直す
+    filter_key = f"{cat}_{status_f}_{len(deck)}"
+    if filter_key != st.session_state.last_filter_key:
+        shuffled = deck[:]
+        random.shuffle(shuffled)
+        st.session_state.shuffled_ids = [str(c["id"]) for c in shuffled]
+        st.session_state.last_filter_key = filter_key
+        st.session_state.card_index = 0
+
+    # シャッフル済み順にdeckを並べ直す
+    id_to_card = {str(c["id"]): c for c in deck}
+    deck = [id_to_card[i] for i in st.session_state.shuffled_ids if i in id_to_card]
 
     if not deck:
         st.info("このフィルターのカードはありません")
