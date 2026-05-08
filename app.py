@@ -496,7 +496,7 @@ with tab1:
         deck.append(c)
 
     # フィルターが変わったらシャッフルし直す
-    filter_key = f"{cat}_{status_f}_{len(deck)}"
+    filter_key = f"{cat}_{status_f}"
     if filter_key != st.session_state.last_filter_key:
         shuffled = deck[:]
         random.shuffle(shuffled)
