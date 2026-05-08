@@ -419,6 +419,10 @@ if "shuffled_ids" not in st.session_state:
     st.session_state.shuffled_ids = []
 if "last_filter_key" not in st.session_state:
     st.session_state.last_filter_key = ""
+if "study_cat" not in st.session_state:
+    st.session_state.study_cat = "すべて"
+if "study_status" not in st.session_state:
+    st.session_state.study_status = "未判定"
 
 statuses = load_statuses()
 custom_cards = load_custom()
