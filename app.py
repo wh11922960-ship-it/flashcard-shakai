@@ -4,6 +4,7 @@ import os
 import re
 import base64
 import requests
+import random
 from pathlib import Path
 
 st.set_page_config(
@@ -504,6 +505,22 @@ if "study_cat" not in st.session_state:
     st.session_state.study_cat = "すべて"
 if "study_status" not in st.session_state:
     st.session_state.study_status = "未判定"
+if "quiz_index" not in st.session_state:
+    st.session_state.quiz_index = 0
+if "quiz_answered" not in st.session_state:
+    st.session_state.quiz_answered = False
+if "quiz_correct" not in st.session_state:
+    st.session_state.quiz_correct = False
+if "quiz_deck_ids" not in st.session_state:
+    st.session_state.quiz_deck_ids = []
+if "quiz_last_filter_key" not in st.session_state:
+    st.session_state.quiz_last_filter_key = ""
+if "quiz_cat" not in st.session_state:
+    st.session_state.quiz_cat = "すべて"
+if "quiz_status" not in st.session_state:
+    st.session_state.quiz_status = "未判定"
+if "quiz_correct_count" not in st.session_state:
+    st.session_state.quiz_correct_count = 0
 
 statuses = load_statuses()
 custom_cards = load_custom()
@@ -555,10 +572,9 @@ def stat_box(col, label, value, key, status_key):
         st.session_state.status_filter = None if st.session_state.status_filter == status_key else status_key
         st.rerun()
 
-tab1, tab2, tab3, tab4 = st.tabs(["学習", "検索", "一覧", "追加"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["学習", "検索", "一覧", "追加", "テスト"])
 
 with tab1:
-    import random
     cats = ["すべて"] + list(CATEGORY_COLORS.keys())
     status_opts = ["すべて", "未判定", "わからない", "曖昧", "わかった"]
     cat = st.session_state.get("study_cat", "すべて")
@@ -777,6 +793,130 @@ with tab4:
                 custom_cards.pop(i)
                 save_custom(custom_cards)
                 st.rerun()
+
+with tab5:
+    st.subheader("テストモード")
+    qcol1, qcol2 = st.columns(2)
+    with qcol1:
+        st.selectbox("カテゴリ", ["すべて"] + list(CATEGORY_COLORS.keys()), key="quiz_cat")
+    with qcol2:
+        st.selectbox("習熟度", ["すべて", "未判定", "わからない", "曖昧", "わかった"], key="quiz_status")
+
+    q_cat = st.session_state.quiz_cat
+    q_status = st.session_state.quiz_status
+
+    quiz_pool = []
+    for c in all_cards:
+        if q_cat != "すべて" and mapped_category(c) != q_cat:
+            continue
+        cid = str(c["id"])
+        s = statuses.get(cid)
+        if q_status == "未判定" and s is not None: continue
+        if q_status == "わからない" and s != "unknown": continue
+        if q_status == "曖昧" and s != "fuzzy": continue
+        if q_status == "わかった" and s != "known": continue
+        quiz_pool.append(c)
+
+    q_filter_key = f"{q_cat}_{q_status}"
+    if q_filter_key != st.session_state.quiz_last_filter_key:
+        shuffled = quiz_pool[:]
+        random.shuffle(shuffled)
+        st.session_state.quiz_deck_ids = [str(c["id"]) for c in shuffled]
+        st.session_state.quiz_last_filter_key = q_filter_key
+        st.session_state.quiz_index = 0
+        st.session_state.quiz_answered = False
+        st.session_state.quiz_correct = False
+        st.session_state.quiz_correct_count = 0
+
+    if len(quiz_pool) < 4:
+        st.info("テストには4枚以上のカードが必要です（フィルターを変えてみてください）")
+    else:
+        id_to_card_all = {str(c["id"]): c for c in all_cards}
+        quiz_ids = [i for i in st.session_state.quiz_deck_ids if i in {str(c["id"]) for c in quiz_pool}]
+        q_idx = st.session_state.quiz_index
+
+        if q_idx >= len(quiz_ids):
+            correct_count = st.session_state.quiz_correct_count
+            total_q = len(quiz_ids)
+            pct = int(correct_count / total_q * 100) if total_q > 0 else 0
+            st.markdown(f"""
+            <div style="background:white;border:1px solid #b2e0dd;border-top:3px solid #0abab5;padding:48px 40px;text-align:center;margin-bottom:16px;">
+                <div style="font-size:0.75rem;color:#888;letter-spacing:0.2em;text-transform:uppercase;margin-bottom:16px;">テスト終了</div>
+                <div style="font-family:'Cormorant Garamond',serif;font-size:3.5rem;font-weight:400;color:#0abab5;">{correct_count} / {total_q}</div>
+                <div style="font-size:0.95rem;color:#555;margin-top:12px;">正解率 {pct}%</div>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button("もう一度テストする", type="primary", use_container_width=True, key="quiz_restart"):
+                shuffled = quiz_pool[:]
+                random.shuffle(shuffled)
+                st.session_state.quiz_deck_ids = [str(c["id"]) for c in shuffled]
+                st.session_state.quiz_index = 0
+                st.session_state.quiz_answered = False
+                st.session_state.quiz_correct = False
+                st.session_state.quiz_correct_count = 0
+                st.rerun()
+        else:
+            st.caption(f"{q_idx + 1} / {len(quiz_ids)} 問")
+            card = id_to_card_all[quiz_ids[q_idx]]
+            cid = str(card["id"])
+            cat_color = CATEGORY_COLORS.get(mapped_category(card), "#0abab5")
+
+            st.markdown(f"""
+            <div class="card-front">
+                <div class="category-badge" style="background:{cat_color}18;color:{cat_color};">{mapped_category(card)}</div>
+                <div class="term-big">{card['term']}</div>
+                <div class="reading">{card.get('reading','')}</div>
+                <div class="status-badge">正しい意味はどれ？</div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.write("")
+
+            choices_key = f"quiz_choices_{q_idx}"
+            if choices_key not in st.session_state:
+                wrong_cards = [c for c in all_cards if str(c["id"]) != cid and c.get("meaning","").strip()]
+                wrong_sample = random.sample(wrong_cards, min(3, len(wrong_cards)))
+                choices = [card["meaning"]] + [c["meaning"] for c in wrong_sample]
+                random.shuffle(choices)
+                st.session_state[choices_key] = choices
+            choices = st.session_state[choices_key]
+
+            if not st.session_state.quiz_answered:
+                for i, choice in enumerate(choices):
+                    if st.button(choice, key=f"qc_{q_idx}_{i}", use_container_width=True):
+                        correct = (choice == card["meaning"])
+                        st.session_state.quiz_answered = True
+                        st.session_state.quiz_correct = correct
+                        statuses[cid] = "known" if correct else "unknown"
+                        st.session_state["statuses_cache"] = statuses
+                        save_statuses(statuses)
+                        if correct:
+                            st.session_state.quiz_correct_count += 1
+                        st.rerun()
+            else:
+                is_correct = st.session_state.quiz_correct
+                result_color = "#0abab5" if is_correct else "#e05c2a"
+                result_text = "正解！" if is_correct else "不正解"
+                result_icon = "○" if is_correct else "✗"
+                st.markdown(f"""
+                <div style="text-align:center;padding:20px;background:{result_color}18;border:1px solid {result_color};margin-bottom:16px;">
+                    <div style="font-size:1.6rem;color:{result_color};font-family:'Cormorant Garamond',serif;">{result_icon}　{result_text}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                for choice in choices:
+                    is_ans = (choice == card["meaning"])
+                    bg = "#0abab5" if is_ans else "white"
+                    txt = "white" if is_ans else "#aaa"
+                    border = "#0abab5" if is_ans else "#e0e0e0"
+                    prefix = "✓ " if is_ans else "　"
+                    st.markdown(f"""
+                    <div style="padding:12px 16px;margin:4px 0;background:{bg};border:1px solid {border};color:{txt};font-size:0.88rem;line-height:1.7;">{prefix}{choice}</div>
+                    """, unsafe_allow_html=True)
+                st.write("")
+                if st.button("次の問題へ →", type="primary", use_container_width=True, key="quiz_next"):
+                    st.session_state.quiz_index += 1
+                    st.session_state.quiz_answered = False
+                    st.session_state.quiz_correct = False
+                    st.rerun()
 
 st.divider()
 
