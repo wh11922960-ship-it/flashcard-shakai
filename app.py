@@ -523,6 +523,10 @@ if "quiz_correct_count" not in st.session_state:
     st.session_state.quiz_correct_count = 0
 if "quiz_selected" not in st.session_state:
     st.session_state.quiz_selected = None
+if "quiz_selected_answer" not in st.session_state:
+    st.session_state.quiz_selected_answer = None
+if "quiz_skipped_count" not in st.session_state:
+    st.session_state.quiz_skipped_count = 0
 
 statuses = load_statuses()
 custom_cards = load_custom()
@@ -829,23 +833,27 @@ with tab5:
         st.session_state.quiz_answered = False
         st.session_state.quiz_correct = False
         st.session_state.quiz_correct_count = 0
+        st.session_state.quiz_skipped_count = 0
 
     if len(quiz_pool) < 4:
         st.info("テストには4枚以上のカードが必要です（フィルターを変えてみてください）")
     else:
         id_to_card_all = {str(c["id"]): c for c in all_cards}
-        quiz_ids = [i for i in st.session_state.quiz_deck_ids if i in {str(c["id"]) for c in quiz_pool}]
+        # デッキはフィルター変更時のみ再生成。途中でステータスが変わっても並びを変えない
+        quiz_ids = [i for i in st.session_state.quiz_deck_ids if i in id_to_card_all]
         q_idx = st.session_state.quiz_index
 
         if q_idx >= len(quiz_ids):
             correct_count = st.session_state.quiz_correct_count
-            total_q = len(quiz_ids)
-            pct = int(correct_count / total_q * 100) if total_q > 0 else 0
+            skipped_count = st.session_state.quiz_skipped_count
+            answered_count = len(quiz_ids) - skipped_count
+            pct = int(correct_count / answered_count * 100) if answered_count > 0 else 0
             st.markdown(f"""
             <div style="background:white;border:1px solid #b2e0dd;border-top:3px solid #0abab5;padding:48px 40px;text-align:center;margin-bottom:16px;">
                 <div style="font-size:0.75rem;color:#888;letter-spacing:0.2em;text-transform:uppercase;margin-bottom:16px;">テスト終了</div>
-                <div style="font-family:'Cormorant Garamond',serif;font-size:3.5rem;font-weight:400;color:#0abab5;">{correct_count} / {total_q}</div>
-                <div style="font-size:0.95rem;color:#555;margin-top:12px;">正解率 {pct}%</div>
+                <div style="font-family:'Cormorant Garamond',serif;font-size:3.5rem;font-weight:400;color:#0abab5;">{correct_count} / {answered_count}</div>
+                <div style="font-size:0.95rem;color:#555;margin-top:8px;">正解率 {pct}%</div>
+                <div style="font-size:0.8rem;color:#aaa;margin-top:6px;">（{skipped_count}問スキップ）</div>
             </div>
             """, unsafe_allow_html=True)
             if st.button("もう一度テストする", type="primary", use_container_width=True, key="quiz_restart"):
@@ -856,6 +864,7 @@ with tab5:
                 st.session_state.quiz_answered = False
                 st.session_state.quiz_correct = False
                 st.session_state.quiz_correct_count = 0
+                st.session_state.quiz_skipped_count = 0
                 st.rerun()
         else:
             st.caption(f"{q_idx + 1} / {len(quiz_ids)} 問")
@@ -885,18 +894,28 @@ with tab5:
             if not st.session_state.quiz_answered:
                 selected = st.radio("選択肢", choices, key=f"qr_{q_idx}", index=None, label_visibility="collapsed")
                 st.write("")
-                if st.button("回答する", type="primary", use_container_width=True, key=f"qsubmit_{q_idx}", disabled=(selected is None)):
+                b1, b2 = st.columns([3, 1])
+                if b1.button("回答する", type="primary", use_container_width=True, key=f"qsubmit_{q_idx}", disabled=(selected is None)):
                     correct = (selected == card["meaning"])
                     st.session_state.quiz_answered = True
                     st.session_state.quiz_correct = correct
+                    st.session_state.quiz_selected_answer = selected
                     statuses[cid] = "known" if correct else "unknown"
                     st.session_state["statuses_cache"] = statuses
                     save_statuses(statuses)
                     if correct:
                         st.session_state.quiz_correct_count += 1
                     st.rerun()
+                if b2.button("スキップ →", use_container_width=True, key=f"qskip_{q_idx}"):
+                    st.session_state.quiz_index += 1
+                    st.session_state.quiz_answered = False
+                    st.session_state.quiz_correct = False
+                    st.session_state.quiz_selected_answer = None
+                    st.session_state.quiz_skipped_count += 1
+                    st.rerun()
             else:
                 is_correct = st.session_state.quiz_correct
+                my_answer = st.session_state.quiz_selected_answer
                 result_color = "#0abab5" if is_correct else "#e05c2a"
                 result_text = "正解！" if is_correct else "不正解"
                 result_icon = "○" if is_correct else "✗"
@@ -906,11 +925,14 @@ with tab5:
                 </div>
                 """, unsafe_allow_html=True)
                 for choice in choices:
-                    is_ans = (choice == card["meaning"])
-                    bg = "#0abab5" if is_ans else "white"
-                    txt = "white" if is_ans else "#aaa"
-                    border = "#0abab5" if is_ans else "#e0e0e0"
-                    prefix = "✓ " if is_ans else "　"
+                    is_correct_choice = (choice == card["meaning"])
+                    is_my_wrong = (choice == my_answer and not is_correct_choice)
+                    if is_correct_choice:
+                        bg, border, txt, prefix = "#0abab5", "#0abab5", "white", "✓ 正解："
+                    elif is_my_wrong:
+                        bg, border, txt, prefix = "#fdf0ee", "#e05c2a", "#e05c2a", "✗ あなたの回答："
+                    else:
+                        bg, border, txt, prefix = "white", "#e0e0e0", "#bbb", "　"
                     st.markdown(f"""
                     <div style="padding:12px 16px;margin:4px 0;background:{bg};border:1px solid {border};color:{txt};font-size:0.88rem;line-height:1.7;">{prefix}{choice}</div>
                     """, unsafe_allow_html=True)
@@ -919,6 +941,7 @@ with tab5:
                     st.session_state.quiz_index += 1
                     st.session_state.quiz_answered = False
                     st.session_state.quiz_correct = False
+                    st.session_state.quiz_selected_answer = None
                     st.rerun()
 
 st.divider()
