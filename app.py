@@ -521,6 +521,8 @@ if "quiz_status" not in st.session_state:
     st.session_state.quiz_status = "未判定"
 if "quiz_correct_count" not in st.session_state:
     st.session_state.quiz_correct_count = 0
+if "quiz_selected" not in st.session_state:
+    st.session_state.quiz_selected = None
 
 statuses = load_statuses()
 custom_cards = load_custom()
@@ -881,17 +883,18 @@ with tab5:
             choices = st.session_state[choices_key]
 
             if not st.session_state.quiz_answered:
-                for i, choice in enumerate(choices):
-                    if st.button(choice, key=f"qc_{q_idx}_{i}", use_container_width=True):
-                        correct = (choice == card["meaning"])
-                        st.session_state.quiz_answered = True
-                        st.session_state.quiz_correct = correct
-                        statuses[cid] = "known" if correct else "unknown"
-                        st.session_state["statuses_cache"] = statuses
-                        save_statuses(statuses)
-                        if correct:
-                            st.session_state.quiz_correct_count += 1
-                        st.rerun()
+                selected = st.radio("選択肢", choices, key=f"qr_{q_idx}", index=None, label_visibility="collapsed")
+                st.write("")
+                if st.button("回答する", type="primary", use_container_width=True, key=f"qsubmit_{q_idx}", disabled=(selected is None)):
+                    correct = (selected == card["meaning"])
+                    st.session_state.quiz_answered = True
+                    st.session_state.quiz_correct = correct
+                    statuses[cid] = "known" if correct else "unknown"
+                    st.session_state["statuses_cache"] = statuses
+                    save_statuses(statuses)
+                    if correct:
+                        st.session_state.quiz_correct_count += 1
+                    st.rerun()
             else:
                 is_correct = st.session_state.quiz_correct
                 result_color = "#0abab5" if is_correct else "#e05c2a"
