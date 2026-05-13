@@ -2,6 +2,8 @@ import streamlit as st
 import json
 import os
 import re
+import base64
+import requests
 from pathlib import Path
 
 st.set_page_config(
@@ -94,6 +96,51 @@ STATUSES_FILE = DATA_DIR / "statuses.json"
 CUSTOM_FILE = DATA_DIR / "custom_cards.json"
 DETAILS_FILE = DATA_DIR / "details.json"
 
+GITHUB_REPO = "wh11922960-ship-it/flashcard-shakai"
+
+def _gh_token():
+    try:
+        return st.secrets["GITHUB_TOKEN"]
+    except Exception:
+        return os.environ.get("GITHUB_TOKEN", "")
+
+def _gh_get(path):
+    token = _gh_token()
+    if not token:
+        return None, None
+    try:
+        r = requests.get(
+            f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}",
+            headers={"Authorization": f"token {token}"},
+            timeout=5
+        )
+        if r.status_code == 200:
+            data = r.json()
+            return base64.b64decode(data["content"]).decode("utf-8"), data["sha"]
+    except Exception:
+        pass
+    return None, None
+
+def _gh_put(path, content_str, sha, message):
+    token = _gh_token()
+    if not token or not sha:
+        return False
+    try:
+        r = requests.put(
+            f"https://api.github.com/repos/{GITHUB_REPO}/contents/{path}",
+            headers={"Authorization": f"token {token}"},
+            json={
+                "message": message,
+                "content": base64.b64encode(content_str.encode()).decode(),
+                "sha": sha,
+                "branch": "main"
+            },
+            timeout=5
+        )
+        return r.status_code in [200, 201]
+    except Exception:
+        return False
+
 def load_details():
     try:
         return json.loads(DETAILS_FILE.read_text(encoding="utf-8"))
@@ -101,24 +148,58 @@ def load_details():
         return {}
 
 def load_statuses():
+    if "statuses_cache" in st.session_state:
+        return st.session_state["statuses_cache"]
+    content, sha = _gh_get("data/statuses.json")
+    if content is not None:
+        st.session_state["_statuses_sha"] = sha
+        try:
+            d = json.loads(content)
+            st.session_state["statuses_cache"] = d
+            return d
+        except Exception:
+            pass
     try:
-        return json.loads(STATUSES_FILE.read_text(encoding="utf-8"))
-    except:
+        d = json.loads(STATUSES_FILE.read_text(encoding="utf-8"))
+        st.session_state["statuses_cache"] = d
+        return d
+    except Exception:
         return {}
 
 def save_statuses(d):
+    st.session_state["statuses_cache"] = d
     DATA_DIR.mkdir(exist_ok=True)
     STATUSES_FILE.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
+    _, sha = _gh_get("data/statuses.json")
+    if sha:
+        _gh_put("data/statuses.json", json.dumps(d, ensure_ascii=False, indent=2), sha, "update statuses")
 
 def load_custom():
+    if "custom_cache" in st.session_state:
+        return st.session_state["custom_cache"]
+    content, sha = _gh_get("data/custom_cards.json")
+    if content is not None:
+        st.session_state["_custom_sha"] = sha
+        try:
+            cards = json.loads(content)
+            st.session_state["custom_cache"] = cards
+            return cards
+        except Exception:
+            pass
     try:
-        return json.loads(CUSTOM_FILE.read_text(encoding="utf-8"))
-    except:
+        cards = json.loads(CUSTOM_FILE.read_text(encoding="utf-8"))
+        st.session_state["custom_cache"] = cards
+        return cards
+    except Exception:
         return []
 
 def save_custom(cards):
+    st.session_state["custom_cache"] = cards
     DATA_DIR.mkdir(exist_ok=True)
     CUSTOM_FILE.write_text(json.dumps(cards, ensure_ascii=False, indent=2), encoding="utf-8")
+    _, sha = _gh_get("data/custom_cards.json")
+    if sha:
+        _gh_put("data/custom_cards.json", json.dumps(cards, ensure_ascii=False, indent=2), sha, "update custom cards")
 
 st.markdown("""
 <style>
